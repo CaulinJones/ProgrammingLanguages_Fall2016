@@ -1,0 +1,135 @@
+#lang racket
+
+(define value-of-cps
+  (lambda (expr env-cps k)
+    (match expr
+      [`(const ,expr)(apply-k k expr)]
+      [`(mult ,x1 ,x2) (value-of-cps x1 env-cps (*-out-k x1 env-cps k))]
+      [`(sub1 ,x) (value-of-cps x env-cps (s1-in-k k))]
+      [`(zero ,x)(value-of-cps x env-cps (zr-in-k k))]
+      [`(if ,test ,conseq ,alt)(value-of-cps test env-cps (if-in-k conseq alt env-cps k))]
+      [`(letcc ,body)(value-of-cps body (extend-env k env-cps) k)]
+      [`(throw ,k-exp ,e-exp)(value-of-cps k-exp env-cps (thr-out-k e-exp env-cps))]
+      [`(let ,e ,body)(value-of-cps e env-cps (let-in-k body env-cps k))]                                                    
+      [`(var ,expr)(apply-env env-cps expr k)]
+      [`(lambda ,body)(apply-k k (make-closure body env-cps))]
+      [`(app ,rator ,rand)(value-of-cps rator env-cps (app-out-k rand env-cps k))]
+      )))
+(define app-in-k
+  (lambda (c k^)
+    (lambda (y) (apply-closure c y k^))))
+(define app-out-k
+  (lambda (ran env k^)
+    (lambda (c) (value-of-cps ran env (app-in-k c k^)))))
+
+
+(define let-in-k
+  (lambda (b env k^)
+    (lambda (a)
+      (value-of-cps b (extend-env a env)k^))))
+    
+(define thr-out-k
+  (lambda (e env)
+    (lambda(x)(value-of-cps e env (thr-in-k x)))))
+    
+(define thr-in-k
+  (lambda (x)
+    (lambda (a)(x a))))
+
+(define if-in-k
+  (lambda (c a env k^)
+    (lambda(t)
+     (if t
+      (value-of-cps c env k^)
+      (value-of-cps a env k^)))))
+    
+(define zr-in-k
+  (lambda (k^)
+    (lambda (a) (apply-k k^ (zero? a)))))
+    
+(define *-in-k
+  (lambda (y k)
+    (lambda (v)
+      (apply-k k (* v y)))))
+
+(define *-out-k
+  (lambda (x env k^)
+    (lambda (v)
+      (value-of-cps x env (*-in-k v k^)))))
+(define s1-in-k
+    (lambda (k^)
+      (lambda (a)
+        (apply-k k^ (sub1 a)))))
+    
+
+(define apply-k
+  (lambda (k v)
+    (k v)))
+(define apply-env
+  (lambda (env y k^)
+    (match env
+      [`(empty-env)(error 'value-of-cps "Unbound Identifier")]
+      [`(extend-env ,a^ ,env^)(if (zero? y) (apply-k k^ a^)(apply-env env^ (sub1 y) k^))])))
+      
+
+
+(define apply-closure
+  (lambda (c y k^)
+    (match c
+      [`(closure ,body^ ,env^)(value-of-cps body^ (extend-env y env^) k^)])))
+
+
+(define make-closure
+  (lambda (body^ env^)
+    `(closure ,body^ ,env^)))
+
+(define extend-env
+  (lambda (a^ env^)
+    `(extend-env ,a^ ,env^)))
+
+(define empty-env
+  (lambda ()
+    `(empty-env)))
+            
+(define empty-k
+  (lambda ()
+    (lambda (v)
+      v)))
+
+(value-of-cps '(const 5) (empty-env) (empty-k)) 
+(value-of-cps '(mult (const 5) (const 5)) (empty-env) (empty-k)) ;25)
+(value-of-cps '(zero (const 5)) (empty-env) (empty-k)) ;#f)
+(value-of-cps '(sub1 (const 5)) (empty-env) (empty-k)) ;4)
+(value-of-cps '(sub1 (sub1 (const 5))) (empty-env) (empty-k)) ;3)
+(value-of-cps '(zero (sub1 (const 6))) (empty-env) (empty-k)) ;#f)
+(value-of-cps '(if (zero (const 5)) (const 3) (mult (const 2) (const 2))) (empty-env) (empty-k)) ;4)
+(value-of-cps '(if (zero (const 0)) (mult (const 2) (const 2)) (const 3)) (empty-env) (empty-k)) ;4)
+(value-of-cps '(app (lambda (const 5)) (const 6)) (empty-env) (empty-k)) ;5) 
+(value-of-cps '(app (lambda (var 0)) (const 5)) (empty-env) (empty-k)) ;5)
+(value-of-cps '(app (app (lambda (lambda (var 1))) (const 6)) (const 5)) (empty-env) (empty-k)) ;6)
+(value-of-cps '(app (lambda (app (lambda (var 1)) (const 6))) (const 5)) (empty-env) (empty-k)) ;5)
+(value-of-cps '(app (lambda (if (zero (var 0)) (const 4) (const 5))) (const 3)) (empty-env) (empty-k)) ;5)
+(value-of-cps '(let (const 6) (const 4)) (empty-env) (empty-k)) ;4)
+(value-of-cps '(let (const 5) (var 0)) (empty-env) (empty-k)) ;5)
+(value-of-cps '(mult (const 5) (let (const 5) (var 0))) (empty-env) (empty-k)) ;25)
+(value-of-cps '(app (if (zero (const 4)) (lambda (var 0)) (lambda (const 5))) (const 3)) (empty-env) (empty-k)) ;5)
+(value-of-cps '(app (if (zero (const 0)) (lambda (var 0)) (lambda (const 5))) (const 3)) (empty-env) (empty-k)) ;3)
+(value-of-cps '(letcc (const 5)) (empty-env) (empty-k)) ;5)
+(value-of-cps '(letcc (throw (var 0) (const 5))) (empty-env) (empty-k)) ;5)
+(value-of-cps '(letcc (throw (var 0) (mult (const 5) (const 5)))) (empty-env) (empty-k)) ;25)
+(value-of-cps '(letcc (throw (app (lambda (var 0)) (var 0)) (mult (const 5) (const 5)))) (empty-env) (empty-k)) ;25)
+(value-of-cps '(letcc (sub1 (throw (var 0) (const 5)))) (empty-env) (empty-k)) ;5)
+(value-of-cps '(letcc (throw (throw (var 0) (const 5)) (const 6))) (empty-env) (empty-k)) ;5)
+(value-of-cps '(letcc (throw (const 5) (throw (var 0) (const 5)))) (empty-env) (empty-k)) ;5)
+(value-of-cps '(mult (const 3) (letcc (throw (const 5) (throw (var 0) (const 5))))) (empty-env) (empty-k)) ;15)
+(value-of-cps '(if (zero (const 5)) (app (lambda (app (var 0) (var 0))) (lambda (app (var 0) (var 0)))) (const 4))(empty-env)(empty-k));4)
+(value-of-cps '(if (zero (const 0)) (const 4) (app (lambda (app (var 0) (var 0))) (lambda (app (var 0) (var 0)))))(empty-env)(empty-k));4)
+(value-of-cps '(app (lambda (app (app (var 0) (var 0)) (const 2)))
+                             (lambda
+                               (lambda 
+                                 (if (zero (var 0))  
+                                     (const 1)
+                                     (app (app (var 1) (var 1)) (sub1 (var 0)))))))
+                       (empty-env)
+                       (empty-k))
+         ;1)

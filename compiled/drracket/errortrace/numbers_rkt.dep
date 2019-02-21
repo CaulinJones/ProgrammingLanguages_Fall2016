@@ -1,0 +1,1 @@
+("6.7" ("384189c944be771501100a2a3cf59fd722e9890b" . "49fce03207fe7a77d301a3bc6039fd17dbf9279e") #"/Users/caulinjones/Documents/c311/mk.rkt" (collects #"errortrace" #"errortrace-key.rkt") (collects #"racket" #"main.rkt") (collects #"racket" #"runtime-config.rkt"))

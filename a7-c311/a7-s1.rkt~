@@ -1,0 +1,16 @@
+#lang racket
+
+(define value-of
+  (lambda (expr env)
+    (match expr
+      [`(const ,expr) expr]
+      [`(mult ,x1 ,x2) (* (value-of x1 env)(value-of x2 env))]
+      [`(sub1 ,x) (sub1 (value-of x env))]
+      [`(zero? ,x)(zero? (value-of x env))]
+      [`(if ,test ,conseq ,alt)(if (value-of test env)
+                                   (value-of conseq env)
+                                   (value-of alt env))]
+      [`(letcc ,body)(let/cc k
+                       (value-of body (lambda (y)(if (zero? y) k (env (sub1 k))))))]
+      [`(throw ,k-exp ,e-exp)((value-of k-exp env)(value-of e-exp env))]
+      [`(let ,body)]
